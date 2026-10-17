@@ -16,7 +16,7 @@ locals {
 # commit is the platform's main when the target network moved to Poland
 # Central. It moves by hand, in a signed pull request.
 module "network" {
-  source = "git::https://github.com/sindredg/ai-security-platform.git//infra/modules/network?ref=3d2044d79f63ba4ae8f8260f079f9d0d0839e712"
+  source = "git::https://github.com/sindredg/ai-security-platform.git//infra/modules/network?ref=9ffaba06e4f2f38515181b89e409fb1dbef107c2"
 
   name                = "${var.name_prefix}-targets"
   resource_group_name = data.azurerm_resource_group.this.name
