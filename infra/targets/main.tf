@@ -13,10 +13,10 @@ locals {
 
 # The shared module, pinned to a commit of the platform repository (ADR 0024).
 # A change to the module reaches the targets only when this pin moves. The
-# commit is the platform's main when the target network moved to Poland
-# Central. It moves by hand, in a signed pull request.
+# commit is the platform's main when the router and the edge VM were added.
+# It moves by hand, in a signed pull request.
 module "network" {
-  source = "git::https://github.com/sindredg/ai-security-platform.git//infra/modules/network?ref=9ffaba06e4f2f38515181b89e409fb1dbef107c2"
+  source = "git::https://github.com/sindredg/ai-security-platform.git//infra/modules/network?ref=77803d87fc99c62687b955bd46f7731fc497cc19"
 
   name                = "${var.name_prefix}-targets"
   resource_group_name = data.azurerm_resource_group.this.name
@@ -70,9 +70,8 @@ module "network" {
     }
   }
 
-  peering = var.platform_virtual_network_id == null ? null : {
-    name                      = "peer-targets-to-platform"
-    remote_virtual_network_id = var.platform_virtual_network_id
+  peerings = var.platform_virtual_network_id == null ? {} : {
+    peer-targets-to-platform = { remote_virtual_network_id = var.platform_virtual_network_id }
   }
 
   tags = {
@@ -80,4 +79,10 @@ module "network" {
     side       = "targets"
     managed-by = "terraform-targets"
   }
+}
+
+# The module held one peering in a list. It holds a map of them now.
+moved {
+  from = module.network.azurerm_virtual_network_peering.this[0]
+  to   = module.network.azurerm_virtual_network_peering.this["peer-targets-to-platform"]
 }
