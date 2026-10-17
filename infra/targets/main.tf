@@ -23,7 +23,8 @@ module "network" {
   location            = var.location
   address_space       = var.address_space
 
-  # Every subnet starts closed. The only way in is SSH from the orchestrator.
+  # Every subnet starts closed. The only ways in are SSH from the orchestrator
+  # and SSH from the mesh VPN router, which carries operator sessions.
   # Service ports arrive with the service that listens on them.
   #
   # The two outbound denies look redundant next to the deny-all baseline. They
@@ -43,6 +44,17 @@ module "network" {
           destination_address_prefix = prefix
           destination_port_range     = "22"
           description                = "Administration through the orchestrator."
+        },
+        {
+          name                       = "allow-ssh-from-router"
+          priority                   = 1020
+          direction                  = "Inbound"
+          access                     = "Allow"
+          protocol                   = "Tcp"
+          source_address_prefix      = var.router_address_prefix
+          destination_address_prefix = prefix
+          destination_port_range     = "22"
+          description                = "Operator sessions through the mesh VPN router."
         },
         {
           name                       = "deny-to-internet"
@@ -70,9 +82,16 @@ module "network" {
     }
   }
 
-  peerings = var.platform_virtual_network_id == null ? {} : {
-    peer-targets-to-platform = { remote_virtual_network_id = var.platform_virtual_network_id }
-  }
+  # Peering is not transitive. The edge network needs its own, so that the
+  # router's sessions reach the targets.
+  peerings = merge(
+    var.platform_virtual_network_id == null ? {} : {
+      peer-targets-to-platform = { remote_virtual_network_id = var.platform_virtual_network_id }
+    },
+    var.edge_virtual_network_id == null ? {} : {
+      peer-targets-to-edge = { remote_virtual_network_id = var.edge_virtual_network_id }
+    },
+  )
 
   tags = {
     project    = "ai-security-platform"

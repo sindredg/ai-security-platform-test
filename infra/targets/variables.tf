@@ -31,8 +31,20 @@ variable "orchestrator_address_prefix" {
   default     = "10.40.0.0/27"
 }
 
+variable "router_address_prefix" {
+  description = "Mesh VPN router subnet in the edge network. An agreed input, not read from the platform root's state."
+  type        = string
+  default     = "10.45.0.32/27"
+}
+
 variable "platform_virtual_network_id" {
   description = "Resource ID of the platform virtual network. Leave null until the platform root has created it."
+  type        = string
+  default     = null
+}
+
+variable "edge_virtual_network_id" {
+  description = "Resource ID of the edge virtual network. Leave null until the platform root has created it."
   type        = string
   default     = null
 }
