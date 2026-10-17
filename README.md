@@ -8,7 +8,7 @@ The platform's AI workers propose changes to this repository. They never get a c
 
 | Path | What it holds |
 | --- | --- |
-| [`infra/targets/`](infra/targets/) | Terraform for the target network in Poland Central: one virtual network, four subnets, a security group each, and the target side of the peering to the platform |
+| [`infra/targets/`](infra/targets/) | Terraform for the target network in Poland Central: one virtual network, four subnets, a security group each, and the target side of the peerings to the platform network and the edge network |
 | [`.github/`](.github/) | The pipeline, the signature check, and the key it accepts |
 
 The target root uses the platform's shared network module, pinned to one commit of the platform repository. A change to the module reaches this side only when that pin moves.

@@ -13,17 +13,18 @@ locals {
 
 # The shared module, pinned to a commit of the platform repository (ADR 0024).
 # A change to the module reaches the targets only when this pin moves. The
-# commit is the platform's main when the target network moved to Poland
-# Central. It moves by hand, in a signed pull request.
+# commit is the platform's main when the router and the edge VM were added.
+# It moves by hand, in a signed pull request.
 module "network" {
-  source = "git::https://github.com/sindredg/ai-security-platform.git//infra/modules/network?ref=9ffaba06e4f2f38515181b89e409fb1dbef107c2"
+  source = "git::https://github.com/sindredg/ai-security-platform.git//infra/modules/network?ref=77803d87fc99c62687b955bd46f7731fc497cc19"
 
   name                = "${var.name_prefix}-targets"
   resource_group_name = data.azurerm_resource_group.this.name
   location            = var.location
   address_space       = var.address_space
 
-  # Every subnet starts closed. The only way in is SSH from the orchestrator.
+  # Every subnet starts closed. The only ways in are SSH from the orchestrator
+  # and SSH from the mesh VPN router, which carries operator sessions.
   # Service ports arrive with the service that listens on them.
   #
   # The two outbound denies look redundant next to the deny-all baseline. They
@@ -43,6 +44,17 @@ module "network" {
           destination_address_prefix = prefix
           destination_port_range     = "22"
           description                = "Administration through the orchestrator."
+        },
+        {
+          name                       = "allow-ssh-from-router"
+          priority                   = 1020
+          direction                  = "Inbound"
+          access                     = "Allow"
+          protocol                   = "Tcp"
+          source_address_prefix      = var.router_address_prefix
+          destination_address_prefix = prefix
+          destination_port_range     = "22"
+          description                = "Operator sessions through the mesh VPN router."
         },
         {
           name                       = "deny-to-internet"
@@ -70,14 +82,26 @@ module "network" {
     }
   }
 
-  peering = var.platform_virtual_network_id == null ? null : {
-    name                      = "peer-targets-to-platform"
-    remote_virtual_network_id = var.platform_virtual_network_id
-  }
+  # Peering is not transitive. The edge network needs its own, so that the
+  # router's sessions reach the targets.
+  peerings = merge(
+    var.platform_virtual_network_id == null ? {} : {
+      peer-targets-to-platform = { remote_virtual_network_id = var.platform_virtual_network_id }
+    },
+    var.edge_virtual_network_id == null ? {} : {
+      peer-targets-to-edge = { remote_virtual_network_id = var.edge_virtual_network_id }
+    },
+  )
 
   tags = {
     project    = "ai-security-platform"
     side       = "targets"
     managed-by = "terraform-targets"
   }
+}
+
+# The module held one peering in a list. It holds a map of them now.
+moved {
+  from = module.network.azurerm_virtual_network_peering.this[0]
+  to   = module.network.azurerm_virtual_network_peering.this["peer-targets-to-platform"]
 }

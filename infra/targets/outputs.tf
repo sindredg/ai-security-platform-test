@@ -13,7 +13,7 @@ output "network_security_group_names" {
   value       = module.network.network_security_group_names
 }
 
-output "peering_name" {
-  description = "Name of the target side of the peering, or null before it exists."
-  value       = module.network.peering_name
+output "peering_names" {
+  description = "Names of the target side's peerings."
+  value       = module.network.peering_names
 }
