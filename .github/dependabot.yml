@@ -1,0 +1,24 @@
+# Version pins are exact, so something has to propose moving them. Dependabot's
+# commits are signed by GitHub and fail the signature check, so each proposal
+# is redone by the operator in a signed pull request (ADR 0024).
+#
+# Not covered, because Dependabot cannot update them. These move by hand:
+#
+# - The Terraform release itself.
+# - The scanner and linter image digests in the checks workflow.
+# - The commit the shared module is pinned to, in infra/targets/main.tf.
+version: 2
+
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+
+  - package-ecosystem: terraform
+    directory: /infra/targets
+    schedule:
+      interval: weekly
+    groups:
+      terraform-providers:
+        patterns: ["*"]
