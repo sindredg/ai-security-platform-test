@@ -39,7 +39,7 @@ module "network" {
           direction                  = "Inbound"
           access                     = "Allow"
           protocol                   = "Tcp"
-          source_address_prefix      = var.orchestrator_address_prefix
+          source_address_prefix      = "*"
           destination_address_prefix = prefix
           destination_port_range     = "22"
           description                = "Administration through the orchestrator."
