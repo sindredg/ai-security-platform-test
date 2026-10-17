@@ -113,10 +113,13 @@ jobs:
 
       # The checks built into the pinned image are used as they are. Without
       # --skip-check-update, a newer bundle is downloaded on every run.
+      # init clones the whole platform repository, whose manifests and
+      # Dockerfile are judged by the platform's own pipeline. Here only
+      # Terraform is scanned.
       - name: Scan Terraform
         run: >
           docker run --rm --volume "${RUNNER_TEMP}/infra:/src/infra:ro" "${TRIVY_IMAGE}"
-          config --skip-check-update --exit-code 1 /src/infra
+          config --skip-check-update --misconfig-scanners terraform --exit-code 1 /src/infra
 
   gitleaks:
     name: Secret scan
