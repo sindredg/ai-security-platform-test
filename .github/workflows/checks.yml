@@ -60,7 +60,7 @@ jobs:
 
   # The rules are arguments to the shared module, so the scanners have to fetch
   # the module to see them. Without the module, this root holds one data
-  # source and nothing to scan.
+  # source and nothing to scan, and both scanners pass.
   checkov:
     name: Checkov
     runs-on: ubuntu-26.04
@@ -70,12 +70,21 @@ jobs:
         with:
           persist-credentials: false
 
+      # Checkov writes the module next to the code, so it scans a copy. A
+      # failed download is only a warning to Checkov, and the scan then passes
+      # on the data source alone. The last step fails the job instead.
       - name: Scan Terraform
+        run: |
+          cp -r infra "${RUNNER_TEMP}/infra"
+          docker run --rm --volume "${RUNNER_TEMP}/infra:/src/infra" "${CHECKOV_IMAGE}" \
+            --directory /src/infra --framework terraform \
+            --download-external-modules true \
+            --skip-download --quiet --compact
+
+      - name: Fail if the module was not scanned
         run: >
-          docker run --rm --volume "${PWD}:/src:ro" "${CHECKOV_IMAGE}"
-          --directory /src/infra --framework terraform
-          --download-external-modules true
-          --skip-download --quiet --compact
+          find "${RUNNER_TEMP}/infra/.external_modules"
+          -path '*/infra/modules/network/main.tf' | grep -q .
 
   trivy:
     name: Trivy
@@ -86,11 +95,27 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Install Terraform
+        run: |
+          zip="terraform_${TERRAFORM_VERSION}_linux_amd64.zip"
+          curl -fsSLO "https://releases.hashicorp.com/terraform/${TERRAFORM_VERSION}/${zip}"
+          echo "${TERRAFORM_SHA256}  ${zip}" | sha256sum -c -
+          unzip -q "${zip}" terraform -d "${RUNNER_TEMP}/bin"
+          echo "${RUNNER_TEMP}/bin" >> "${GITHUB_PATH}"
+
+      # Trivy reads modules that terraform init has fetched, so init runs
+      # first, in a copy. The test fails the job if the module is not there.
+      - name: Fetch the module
+        run: |
+          cp -r infra "${RUNNER_TEMP}/infra"
+          terraform -chdir="${RUNNER_TEMP}/infra/targets" init -backend=false -input=false -lockfile=readonly
+          test -f "${RUNNER_TEMP}/infra/targets/.terraform/modules/network/infra/modules/network/main.tf"
+
       # The checks built into the pinned image are used as they are. Without
       # --skip-check-update, a newer bundle is downloaded on every run.
       - name: Scan Terraform
         run: >
-          docker run --rm --volume "${PWD}:/src:ro" "${TRIVY_IMAGE}"
+          docker run --rm --volume "${RUNNER_TEMP}/infra:/src/infra:ro" "${TRIVY_IMAGE}"
           config --skip-check-update --exit-code 1 /src/infra
 
   gitleaks:
