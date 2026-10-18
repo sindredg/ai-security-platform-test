@@ -13,10 +13,11 @@ locals {
 
 # The shared module, pinned to a commit of the platform repository (ADR 0024).
 # A change to the module reaches the targets only when this pin moves. The
-# commit is the platform's main when the router and the edge VM were added.
+# commit is the platform's main when the module began refusing an inbound
+# allow from any source.
 # It moves by hand, in a signed pull request.
 module "network" {
-  source = "git::https://github.com/sindredg/ai-security-platform.git//infra/modules/network?ref=77803d87fc99c62687b955bd46f7731fc497cc19"
+  source = "git::https://github.com/sindredg/ai-security-platform.git//infra/modules/network?ref=211489047894dbea2d6ea113479434ef6b67f356"
 
   name                = "${var.name_prefix}-targets"
   resource_group_name = data.azurerm_resource_group.this.name
