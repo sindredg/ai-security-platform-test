@@ -17,7 +17,7 @@ locals {
 # allow from any source.
 # It moves by hand, in a signed pull request.
 module "network" {
-  source = "git::https://github.com/sindredg/ai-security-platform.git//infra/modules/network?ref=211489047894dbea2d6ea113479434ef6b67f356"
+  source = "git::https://github.com/sindredg/ai-security-platform.git//infra/modules/network?ref=779eb84f448215d8cd01507d2ba0a46113fbae9c"
 
   name                = "${var.name_prefix}-targets"
   resource_group_name = data.azurerm_resource_group.this.name
