@@ -1,0 +1,34 @@
+# NetBox's background worker (platform ADR 0035), from the same image as
+# netbox.container, with the command upstream's compose file gives it. It
+# skips the image's entrypoint script, so it does not migrate the database:
+# the web process does. Until the migrations are in, it fails and restarts.
+[Unit]
+Description=NetBox background worker
+Requires=netbox.service
+After=netbox.service
+
+[Container]
+ContainerName=netbox-worker
+Image=@NETBOX_IMAGE_ID@
+Pull=never
+Exec=/opt/netbox/venv/bin/python /opt/netbox/netbox/manage.py rqworker
+Network=host
+User=999
+Group=0
+EnvironmentFile=/etc/aisec/netbox/netbox.env
+Secret=netbox_db_password,type=mount,target=db_password,uid=999,gid=0,mode=0400
+Secret=netbox_valkey_password,type=mount,target=redis_password,uid=999,gid=0,mode=0400
+Secret=netbox_valkey_password,type=mount,target=redis_cache_password,uid=999,gid=0,mode=0400
+Secret=netbox_secret_key,type=mount,target=secret_key,uid=999,gid=0,mode=0400
+Secret=netbox_api_token_pepper,type=mount,target=api_token_pepper_1,uid=999,gid=0,mode=0400
+Volume=/var/lib/aisec-netbox/media:/opt/netbox/netbox/media:rw
+ReadOnly=true
+NoNewPrivileges=true
+DropCapability=all
+
+[Service]
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
