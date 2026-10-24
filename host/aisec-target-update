@@ -1,0 +1,22 @@
+#!/bin/bash
+# The update key's one command (ADR 0036), run as root through sudo. The
+# orchestrator's session forwards Squid's target port to 127.0.0.1:3129 while
+# this runs, and apt reaches the mirror through it. It takes no arguments:
+# what it installs is this VM's list in /etc/aisec/target-packages.
+#
+# The last two lines are for the update run's journal. The orchestrator treats
+# them as this machine's claim, not as evidence.
+set -euo pipefail
+export DEBIAN_FRONTEND=noninteractive
+apt_options=(-y -q -o DPkg::Lock::Timeout=120 -o Dpkg::Options::=--force-confold)
+
+read -r -a packages < /etc/aisec/target-packages || true
+
+apt-get update -q
+if [ "${#packages[@]}" -gt 0 ]; then
+  apt-get install "${apt_options[@]}" "${packages[@]}"
+fi
+apt-get upgrade "${apt_options[@]}" --with-new-pkgs
+
+echo "security_updates_pending=$(apt list --upgradable 2>/dev/null | grep -c -- -security || true)"
+echo "reboot_required=$([ -f /run/reboot-required ] && echo yes || echo no)"

@@ -8,7 +8,8 @@ The platform's AI workers propose changes to this repository. They never get a c
 
 | Path | What it holds |
 | --- | --- |
-| [`infra/targets/`](infra/targets/) | Terraform for the target network in Poland Central: one virtual network, four subnets, a security group each, and the target side of the peerings to the platform network and the edge network |
+| [`infra/targets/`](infra/targets/) | Terraform for the target network in Poland Central: one virtual network, four subnets, a security group each, the target side of the peerings to the platform network and the edge network, and the two target VMs with their first boot |
+| [`host/`](host/) | The scripts the target VMs run as root: the first boot, and the update command that the orchestrator's update key runs ([ADR 0036](https://github.com/sindredg/ai-security-platform/blob/main/docs/decisions/0036-target-packages-through-a-port-the-orchestrator-forwards.md)) |
 | [`.github/`](.github/) | The pipeline, the signature check, and the key it accepts |
 
 The target root uses the platform's shared network module, pinned to one commit of the platform repository. A change to the module reaches this side only when that pin moves.

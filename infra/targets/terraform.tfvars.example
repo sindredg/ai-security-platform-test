@@ -3,3 +3,8 @@
 platform_virtual_network_id = "REPLACE_WITH_PLATFORM_VIRTUAL_NETWORK_ID"
 # terraform -chdir=../platform output -raw edge_virtual_network_id
 edge_virtual_network_id = "REPLACE_WITH_EDGE_VIRTUAL_NETWORK_ID"
+# The operator's key and certificate authority, the same values as the platform root's.
+operator_ssh_public_key     = "REPLACE_WITH_SSH_PUBLIC_KEY"
+operator_user_ca_public_key = "REPLACE_WITH_USER_CA_PUBLIC_KEY"
+# On the orchestrator: sudo cat /etc/aisec/target-update/id_ed25519.pub
+update_public_key = "REPLACE_WITH_UPDATE_PUBLIC_KEY"
