@@ -3,6 +3,18 @@
 # here downloads anything. Packages arrive later, during an update run that
 # the orchestrator starts. The first-boot script and the update command are
 # files in host/, so ShellCheck reads them as they run.
+# The one mirror Squid's target port serves (ADR 0036). Without a URI,
+# cloud-init looks for azure.archive.ubuntu.com by resolving its name, finds
+# no DNS here, and falls back to archive.ubuntu.com and security.ubuntu.com,
+# which the port refuses.
+apt:
+  primary:
+    - arches: [default]
+      uri: http://azure.archive.ubuntu.com/ubuntu/
+  security:
+    - arches: [default]
+      uri: http://azure.archive.ubuntu.com/ubuntu/
+
 write_files:
   # The platform VMs' hardening. What was left alone, and why, is in the
   # platform's milestone 2 worklog.
