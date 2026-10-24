@@ -48,3 +48,60 @@ variable "edge_virtual_network_id" {
   type        = string
   default     = null
 }
+
+variable "orchestrator_ip" {
+  description = "The orchestrator's address. The update key logs in only from it (ADR 0036). An agreed input, not read from the platform root's state."
+  type        = string
+  default     = "10.40.0.4"
+}
+
+variable "zone" {
+  description = "Availability zone for both VMs. Zones 1 and 2 are restricted for this size in Poland Central."
+  type        = string
+  default     = "3"
+}
+
+variable "vm_size" {
+  description = "VM size for both target VMs. x64, 8 GB. Two of them fill the region's 4 vCPUs."
+  type        = string
+  default     = "Standard_B2as_v2"
+}
+
+# az vm image list can name versions the region does not serve yet. Take the
+# newest one that az vm image show finds in Poland Central.
+variable "image_version" {
+  description = "Ubuntu 26.04 LTS image version of both VMs."
+  type        = string
+  default     = "26.04.202610210"
+}
+
+variable "admin_username" {
+  description = "Administrator account on both VMs. Certificate authentication only (ADR 0022)."
+  type        = string
+  default     = "aisec"
+}
+
+variable "operator_ssh_public_key" {
+  description = "The operator's SSH public key, in OpenSSH format. Azure requires one. First boot removes it: the administrator account takes only a certificate (ADR 0022)."
+  type        = string
+}
+
+variable "operator_user_ca_public_key" {
+  description = "Public half of the operator's SSH certificate authority, in OpenSSH format (ADR 0022). The same key as the platform's."
+  type        = string
+
+  validation {
+    condition     = can(regex("^ssh-ed25519 [A-Za-z0-9+/]+={0,2}( [A-Za-z0-9@._-]+)?$", var.operator_user_ca_public_key))
+    error_message = "One Ed25519 public key on one line, in OpenSSH format."
+  }
+}
+
+variable "update_public_key" {
+  description = "Public half of the orchestrator's update key (ADR 0036). It logs in to aisec-update, whose only command is the update. The private half stays on the orchestrator."
+  type        = string
+
+  validation {
+    condition     = can(regex("^ssh-ed25519 [A-Za-z0-9+/]+={0,2}( [A-Za-z0-9@._-]+)?$", var.update_public_key))
+    error_message = "One Ed25519 public key on one line, in OpenSSH format."
+  }
+}

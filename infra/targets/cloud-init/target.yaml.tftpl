@@ -1,0 +1,110 @@
+#cloud-config
+# First boot of a target VM. The targets have no way out (ADR 0036): nothing
+# here downloads anything. Packages arrive later, during an update run that
+# the orchestrator starts. The first-boot script and the update command are
+# files in host/, so ShellCheck reads them as they run.
+write_files:
+  # The platform VMs' hardening. What was left alone, and why, is in the
+  # platform's milestone 2 worklog.
+  - path: /etc/sysctl.d/90-aisec-hardening.conf
+    permissions: "0644"
+    content: |
+      kernel.sysrq = 0
+      kernel.kptr_restrict = 2
+      kernel.core_uses_pid = 1
+      fs.suid_dumpable = 0
+      fs.protected_fifos = 2
+      fs.protected_regular = 2
+      net.core.bpf_jit_harden = 2
+      net.ipv4.conf.all.accept_source_route = 0
+      net.ipv4.conf.default.accept_source_route = 0
+      net.ipv4.conf.all.accept_redirects = 0
+      net.ipv4.conf.default.accept_redirects = 0
+      net.ipv4.conf.all.send_redirects = 0
+      net.ipv4.conf.default.send_redirects = 0
+      net.ipv4.conf.all.log_martians = 1
+      net.ipv4.conf.default.log_martians = 1
+      net.ipv6.conf.all.accept_redirects = 0
+      net.ipv6.conf.default.accept_redirects = 0
+
+  # Read before the image's own files, and the first value wins.
+  - path: /etc/ssh/sshd_config.d/10-aisec.conf
+    permissions: "0600"
+    content: |
+      PermitRootLogin no
+      AllowAgentForwarding no
+      AllowTcpForwarding no
+      X11Forwarding no
+      MaxAuthTries 3
+      MaxSessions 2
+      ClientAliveInterval 300
+      ClientAliveCountMax 2
+      TCPKeepAlive no
+      LogLevel VERBOSE
+      # The administrator account takes only a certificate signed by the
+      # operator's certificate authority, for the principal in the file (ADR
+      # 0022). First boot writes the empty revocation list.
+      Match User ${admin_username}
+        AuthorizedKeysFile none
+        TrustedUserCAKeys /etc/ssh/aisec-user-ca.pub
+        AuthorizedPrincipalsFile /etc/ssh/aisec-principals
+        RevokedKeys /etc/ssh/aisec-revoked.krl
+      # The orchestrator's update key (ADR 0036). Its one command is the
+      # update, and its one forward is a listener on 127.0.0.1:3129 that leads
+      # to wherever the orchestrator's side of the session points it. The key
+      # file is root's, so the account cannot add a key.
+      Match User aisec-update
+        AuthorizedKeysFile /etc/ssh/aisec-update-keys
+        AllowTcpForwarding remote
+        PermitListen 127.0.0.1:3129
+        PermitOpen none
+        PermitTTY no
+        ForceCommand sudo -n /usr/local/sbin/aisec-target-update
+
+  - path: /etc/ssh/aisec-user-ca.pub
+    permissions: "0644"
+    content: |
+      ${operator_user_ca_public_key}
+
+  - path: /etc/ssh/aisec-principals
+    permissions: "0644"
+    content: |
+      aisec-operator
+
+  # The same limits again on the key line, so a change to one file alone does
+  # not open the account.
+  - path: /etc/ssh/aisec-update-keys
+    permissions: "0644"
+    content: |
+      from="${orchestrator_ip}",restrict,port-forwarding,permitlisten="127.0.0.1:3129" ${update_public_key}
+
+  - path: /etc/sudoers.d/90-aisec-update
+    permissions: "0440"
+    content: |
+      aisec-update ALL=(root) NOPASSWD: /usr/local/sbin/aisec-target-update ""
+
+  # apt reaches the mirror only through the port an update run forwards.
+  # Between runs nothing listens there, and apt fails at once.
+  - path: /etc/apt/apt.conf.d/90aisec-proxy
+    permissions: "0644"
+    content: |
+      Acquire::http::Proxy "http://127.0.0.1:3129";
+
+  # The packages this VM's update run installs, besides the upgrades.
+  - path: /etc/aisec/target-packages
+    permissions: "0644"
+    content: |
+      ${packages}
+
+  - path: /usr/local/sbin/aisec-target-update
+    encoding: b64
+    permissions: "0755"
+    content: ${update_command}
+
+  - path: /usr/local/sbin/aisec-first-boot
+    encoding: b64
+    permissions: "0700"
+    content: ${first_boot}
+
+runcmd:
+  - [/usr/local/sbin/aisec-first-boot, "${admin_username}"]

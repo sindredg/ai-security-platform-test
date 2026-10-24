@@ -1,0 +1,38 @@
+#!/bin/bash
+# First boot of a target VM, run once by cloud-init as root. It downloads
+# nothing: the targets have no way out. Packages arrive with the first update
+# run (ADR 0036).
+# Usage: aisec-first-boot ADMIN_USERNAME
+set -euo pipefail
+admin=${1:?usage: aisec-first-boot ADMIN_USERNAME}
+
+# An empty revocation list. Without the file, sshd refuses every certificate
+# for the administrator account. Azure wrote the operator key to the account's
+# authorized_keys, which sshd ignores for it. The key goes.
+ssh-keygen -q -k -f /etc/ssh/aisec-revoked.krl
+rm -f "/home/$admin/.ssh/authorized_keys"
+sysctl --system >/dev/null
+
+# The account the orchestrator's update key logs in to. It needs a shell,
+# because sshd runs the forced command through it, and nothing else.
+useradd --create-home --shell /bin/bash --comment "Update runs from the orchestrator" aisec-update
+passwd --lock aisec-update >/dev/null
+visudo -c -q -f /etc/sudoers.d/90-aisec-update
+
+# Tighter modes on files an audit flagged, and no assembler or linker.
+chmod 600 /etc/crontab /etc/ssh/sshd_config
+chmod 700 /etc/cron.d /etc/cron.daily /etc/cron.hourly /etc/cron.weekly /etc/cron.monthly
+DEBIAN_FRONTEND=noninteractive apt-get remove -y -q -o DPkg::Lock::Timeout=120 binutils
+
+# With no path between update runs, unattended upgrades and the daily package
+# refresh can only fail (ADR 0036). The same goes for Ubuntu's news, Pro
+# status, and release checks. The timers stop first: masking the service
+# under a running timer leaves the timer failed.
+systemctl stop apt-daily.timer apt-daily-upgrade.timer motd-news.timer update-notifier-motd.timer
+systemctl disable --now unattended-upgrades.service
+systemctl mask apt-daily.timer apt-daily-upgrade.timer apt-daily.service apt-daily-upgrade.service \
+  unattended-upgrades.service esm-cache.service apt-news.service motd-news.timer motd-news.service \
+  update-notifier-motd.timer update-notifier-motd.service
+chmod 644 /etc/update-motd.d/91-release-upgrade
+
+touch /var/lib/aisec-first-boot.done

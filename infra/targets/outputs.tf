@@ -17,3 +17,8 @@ output "peering_names" {
   description = "Names of the target side's peerings."
   value       = module.network.peering_names
 }
+
+output "vm_private_ips" {
+  description = "Each target VM's address."
+  value       = { for name, vm in local.vms : name => vm.address }
+}
