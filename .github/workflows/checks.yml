@@ -176,11 +176,12 @@ jobs:
         with:
           persist-credentials: false
 
-      # The signature check's script. The image has no shell, so the runner
-      # finds the files.
-      - name: Lint the pipeline scripts
+      # The signature check's script, and the target VMs' first-boot script
+      # and update command, which run as root. The image has no shell, so the
+      # runner finds the files.
+      - name: Lint the pipeline and host scripts
         run: |
-          mapfile -t scripts < <(find .github/scripts -name '*.sh' | sort)
-          [ "${#scripts[@]}" -gt 0 ]
+          mapfile -t scripts < <({ find .github/scripts -name '*.sh'; find host -type f; } | sort)
+          [ "${#scripts[@]}" -ge 3 ]
           docker run --rm --volume "${PWD}:/mnt:ro" --workdir /mnt "${SHELLCHECK_IMAGE}" \
             "${scripts[@]}"
