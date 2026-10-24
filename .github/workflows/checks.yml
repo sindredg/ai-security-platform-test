@@ -176,12 +176,50 @@ jobs:
         with:
           persist-credentials: false
 
-      # The signature check's script, and the target VMs' first-boot script
-      # and update command, which run as root. The image has no shell, so the
-      # runner finds the files.
+      # The signature check's script, and the target VMs' first-boot script,
+      # update command, and NetBox's install script, which run as root. The
+      # image has no shell, so the runner finds the files.
       - name: Lint the pipeline and host scripts
         run: |
-          mapfile -t scripts < <({ find .github/scripts -name '*.sh'; find host -type f; } | sort)
-          [ "${#scripts[@]}" -ge 3 ]
+          mapfile -t scripts < <({ find .github/scripts netbox -name '*.sh'; find host -type f; } | sort)
+          [ "${#scripts[@]}" -ge 4 ]
           docker run --rm --volume "${PWD}:/mnt:ro" --workdir /mnt "${SHELLCHECK_IMAGE}" \
             "${scripts[@]}"
+
+  # Podman's Quadlet generator turns NetBox's .container files into systemd
+  # units on the VM. Its dry run is the parser the VM uses, so it is the
+  # linter. The runner image's Podman is the one Ubuntu ships, 5.7.0 as on the
+  # NetBox VM, and is not pinned here: the runner image sets it, and the job
+  # prints it.
+  quadlet:
+    name: Quadlet units
+    runs-on: ubuntu-26.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # The units get a placeholder image ID, as install-netbox.sh writes the
+      # real one. A unit with a key Quadlet does not know has to fail the dry
+      # run, or the dry run proves nothing about the others.
+      - name: Generate the units
+        run: |
+          podman --version
+          units="${RUNNER_TEMP}/units"
+          broken="${RUNNER_TEMP}/broken"
+          mkdir -p "${units}" "${broken}"
+          id=$(printf '0%.0s' $(seq 1 64))
+          for unit in netbox/*.container; do
+            sed "s/@NETBOX_IMAGE_ID@/${id}/" "${unit}" > "${units}/${unit##*/}"
+          done
+          [ "$(find "${units}" -name '*.container' | wc -l)" -ge 2 ]
+          QUADLET_UNIT_DIRS="${units}" /usr/libexec/podman/quadlet -dryrun > "${RUNNER_TEMP}/generated"
+          grep -c '^ExecStart=/usr/bin/podman run ' "${RUNNER_TEMP}/generated" |
+            grep -qx "$(find "${units}" -name '*.container' | wc -l)"
+          cp "${units}/netbox.container" "${broken}/"
+          sed -i 's/^\[Container\]$/[Container]\nNotAQuadletKey=1/' "${broken}/netbox.container"
+          if QUADLET_UNIT_DIRS="${broken}" /usr/libexec/podman/quadlet -dryrun > /dev/null 2>&1; then
+            echo "::error::Quadlet's dry run passed a unit with an unknown key"
+            exit 1
+          fi
