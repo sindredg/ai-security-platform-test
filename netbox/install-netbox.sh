@@ -1,6 +1,6 @@
 #!/bin/bash
-# Installs NetBox on the NetBox VM (platform ADR 0035 and 0038). Runs as root,
-# from a copy of this directory, with the image archive the orchestrator
+# Installs NetBox on the NetBox VM (platform ADR 0035, 0038, and 0039). Runs as
+# root, from a copy of this directory, with the image archive the orchestrator
 # fetched. PostgreSQL, Valkey, and Podman are installed already, by an update
 # run.
 #
@@ -118,8 +118,11 @@ systemctl restart valkey-server
 echo "ok    Valkey password"
 
 # 6. The settings, the media directory, and the units with the image ID in
-# them. Quadlet's dry run reads every unit before systemd does.
+# them. Quadlet's dry run reads every unit before systemd does. The units
+# mount client-address.py and granian.py from $conf (ADR 0039).
 install -m 644 "$here/netbox.env" "$conf/netbox.env"
+install -m 644 "$here/client-address.py" "$conf/client-address.py"
+install -m 644 "$here/granian.py" "$conf/granian.py"
 install -d -m 755 "${media%/*}"
 install -d -m 750 -o 999 -g 0 "$media"
 install -d -m 755 "$units"
