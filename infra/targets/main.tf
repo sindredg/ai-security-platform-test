@@ -9,6 +9,49 @@ locals {
     unintended = cidrsubnet(var.address_space, 7, 2) # 10.50.0.64/27
     rehearsal  = cidrsubnet(var.address_space, 7, 8) # 10.50.1.0/27
   }
+
+  # NetBox's port (platform ADR 0035), on the subnets that use it. The
+  # orchestrator seeds and collects, and the consumer reads from its own
+  # subnet. Nothing else reaches the port.
+  service_rules = {
+    netbox = [
+      {
+        name                       = "allow-netbox-from-orchestrator"
+        priority                   = 1100
+        direction                  = "Inbound"
+        access                     = "Allow"
+        protocol                   = "Tcp"
+        source_address_prefix      = "${var.orchestrator_ip}/32"
+        destination_address_prefix = "${local.netbox_ip}/32"
+        destination_port_range     = "8443"
+        description                = "NetBox's API, for the seed and the collectors."
+      },
+      {
+        name                       = "allow-netbox-from-consumer"
+        priority                   = 1110
+        direction                  = "Inbound"
+        access                     = "Allow"
+        protocol                   = "Tcp"
+        source_address_prefix      = local.subnet_prefixes.consumer
+        destination_address_prefix = "${local.netbox_ip}/32"
+        destination_port_range     = "8443"
+        description                = "NetBox's API, for the authorized consumer."
+      },
+    ]
+    consumer = [
+      {
+        name                       = "allow-netbox-to-netbox"
+        priority                   = 1100
+        direction                  = "Outbound"
+        access                     = "Allow"
+        protocol                   = "Tcp"
+        source_address_prefix      = local.subnet_prefixes.consumer
+        destination_address_prefix = "${local.netbox_ip}/32"
+        destination_port_range     = "8443"
+        description                = "The authorized consumer, to NetBox's API."
+      },
+    ]
+  }
 }
 
 # The shared module, pinned to a commit of the platform repository (ADR 0024).
@@ -24,9 +67,10 @@ module "network" {
   location            = var.location
   address_space       = var.address_space
 
-  # Every subnet starts closed. The only ways in are SSH from the orchestrator
-  # and SSH from the mesh VPN router, which carries operator sessions.
-  # Service ports arrive with the service that listens on them.
+  # Every subnet starts closed. The ways in on every subnet are SSH from the
+  # orchestrator and SSH from the mesh VPN router, which carries operator
+  # sessions. Service ports arrive with the service that listens on them, in
+  # service_rules.
   #
   # The two outbound denies look redundant next to the deny-all baseline. They
   # are not. The baseline does not cover Azure DNS, and the internet deny has to
@@ -34,7 +78,7 @@ module "network" {
   subnets = {
     for name, prefix in local.subnet_prefixes : name => {
       address_prefix = prefix
-      rules = [
+      rules = concat([
         {
           name                       = "allow-ssh-from-orchestrator"
           priority                   = 1000
@@ -79,7 +123,7 @@ module "network" {
           destination_port_range     = "*"
           description                = "Azure DNS ignores every rule that does not name this tag, and a resolver is a way out."
         },
-      ]
+      ], lookup(local.service_rules, name, []))
     }
   }
 

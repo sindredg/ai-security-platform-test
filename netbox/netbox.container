@@ -1,0 +1,43 @@
+# NetBox's web process (platform ADR 0035), a Podman Quadlet unit: systemd's
+# generator turns it into netbox.service. install-netbox.sh writes the pinned
+# image ID in place of the placeholder, so the unit starts that image and no
+# other, and never pulls.
+[Unit]
+Description=NetBox
+Requires=postgresql.service valkey-server.service
+After=postgresql.service valkey-server.service
+
+[Container]
+ContainerName=netbox
+Image=@NETBOX_IMAGE_ID@
+Pull=never
+# The host's network, so NetBox reaches PostgreSQL and Valkey on loopback.
+# The container can bind any port on the VM. Only 22 and 8443 are open in the
+# security group.
+Network=host
+# The image's netbox account, as upstream's compose file runs it.
+User=999
+Group=0
+EnvironmentFile=/etc/aisec/netbox/netbox.env
+# Each secret is a file under /run/secrets, which netbox-docker's
+# configuration reads. The cache's password is the same Valkey password under
+# the second name the configuration looks for.
+Secret=netbox_db_password,type=mount,target=db_password,uid=999,gid=0,mode=0400
+Secret=netbox_valkey_password,type=mount,target=redis_password,uid=999,gid=0,mode=0400
+Secret=netbox_valkey_password,type=mount,target=redis_cache_password,uid=999,gid=0,mode=0400
+Secret=netbox_secret_key,type=mount,target=secret_key,uid=999,gid=0,mode=0400
+Secret=netbox_api_token_pepper,type=mount,target=api_token_pepper_1,uid=999,gid=0,mode=0400
+# Granian serves TLS with the key made on this VM (platform ADR 0038).
+Secret=netbox_tls_key,type=mount,target=tls.key,uid=999,gid=0,mode=0400
+Volume=/etc/aisec/netbox/tls.crt:/etc/netbox/tls.crt:ro
+Volume=/var/lib/aisec-netbox/media:/opt/netbox/netbox/media:rw
+ReadOnly=true
+NoNewPrivileges=true
+DropCapability=all
+
+[Service]
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
