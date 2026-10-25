@@ -1,0 +1,8 @@
+# The same line length as the platform repository. seed.py runs on the
+# orchestrator and reads NetBox's answers, which a compromised target shapes,
+# so every file gets the platform's rules for such code: bugbear, the security
+# rules, and import order.
+line-length = 88
+
+[lint]
+extend-select = ["B", "S", "I", "UP"]

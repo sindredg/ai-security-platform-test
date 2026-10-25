@@ -30,6 +30,11 @@ Secret=netbox_api_token_pepper,type=mount,target=api_token_pepper_1,uid=999,gid=
 # Granian serves TLS with the key made on this VM (platform ADR 0038).
 Secret=netbox_tls_key,type=mount,target=tls.key,uid=999,gid=0,mode=0400
 Volume=/etc/aisec/netbox/tls.crt:/etc/netbox/tls.crt:ro
+# The client's address is the connection's, never a header's (platform ADR
+# 0039): a setting beside netbox-docker's configuration, and a module in place
+# of the one that trusts X-Forwarded-For.
+Volume=/etc/aisec/netbox/client-address.py:/etc/netbox/config/client-address.py:ro
+Volume=/etc/aisec/netbox/granian.py:/opt/netbox/netbox/netbox/granian.py:ro
 Volume=/var/lib/aisec-netbox/media:/opt/netbox/netbox/media:rw
 ReadOnly=true
 NoNewPrivileges=true

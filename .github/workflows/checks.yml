@@ -34,6 +34,8 @@ env:
   GITLEAKS_SHA256: 551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
   # ShellCheck 0.11.0
   SHELLCHECK_IMAGE: koalaman/shellcheck@sha256:61862eba1fcf09a484ebcc6feea46f1782532571a34ed51fedf90dd25f925a8d
+  # Ruff 0.17.2, the platform repository's pin
+  RUFF_IMAGE: ghcr.io/astral-sh/ruff@sha256:d69a8c8d529a866a6aaea0dfda672693d68671a08827db765514abc1571a78a0
 
 jobs:
   terraform:
@@ -177,14 +179,43 @@ jobs:
           persist-credentials: false
 
       # The signature check's script, and the target VMs' first-boot script,
-      # update command, and NetBox's install script, which run as root. The
-      # image has no shell, so the runner finds the files.
+      # update command, and NetBox's install and token scripts, which run as
+      # root. The image has no shell, so the runner finds the files.
       - name: Lint the pipeline and host scripts
         run: |
           mapfile -t scripts < <({ find .github/scripts netbox -name '*.sh'; find host -type f; } | sort)
-          [ "${#scripts[@]}" -ge 4 ]
+          [ "${#scripts[@]}" -ge 5 ]
           docker run --rm --volume "${PWD}:/mnt:ro" --workdir /mnt "${SHELLCHECK_IMAGE}" \
             "${scripts[@]}"
+
+  # NetBox's seed script runs as root on the orchestrator, and the other two
+  # Python files are NetBox's settings. ruff.toml sets the rules.
+  ruff:
+    name: Ruff
+    runs-on: ubuntu-26.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Lint the Python files
+        run: >
+          docker run --rm --volume "${PWD}:/io:ro" --workdir /io "${RUFF_IMAGE}"
+          check --no-cache netbox
+
+      - name: Check the formatting
+        run: >
+          docker run --rm --volume "${PWD}:/io:ro" --workdir /io "${RUFF_IMAGE}"
+          format --no-cache --check netbox
+
+      # The seed and the contract are read by Python's json module, on the
+      # orchestrator and the lab VM. A file it cannot parse fails here first.
+      - name: Parse the JSON files
+        run: |
+          mapfile -t files < <(find netbox -name '*.json' | sort)
+          [ "${#files[@]}" -ge 2 ]
+          for f in "${files[@]}"; do python3 -I -m json.tool "${f}" > /dev/null; done
 
   # Podman's Quadlet generator turns NetBox's .container files into systemd
   # units on the VM. Its dry run is the parser the VM uses, so it is the
