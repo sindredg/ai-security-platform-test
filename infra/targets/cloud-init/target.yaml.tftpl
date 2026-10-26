@@ -108,6 +108,30 @@ write_files:
     content: |
       ${packages}
 
+%{ if rehearsal_address != "" ~}
+  # The lab VM's second interface, for the rehearsal copy (platform ADR 0044).
+  # Replies from the copy's address leave through that interface, by its own
+  # routing table. Without it they would leave through the first interface,
+  # with a source address Azure does not let out of it.
+  - path: /etc/netplan/60-aisec-rehearsal.yaml
+    permissions: "0600"
+    content: |
+      network:
+        version: 2
+        ethernets:
+          eth1:
+            routes:
+              - to: ${rehearsal_prefix}
+                scope: link
+                table: 101
+              - to: 0.0.0.0/0
+                via: ${rehearsal_gateway}
+                table: 101
+            routing-policy:
+              - from: ${rehearsal_address}
+                table: 101
+
+%{ endif ~}
   - path: /usr/local/sbin/aisec-target-update
     encoding: b64
     permissions: "0755"

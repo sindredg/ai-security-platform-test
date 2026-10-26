@@ -1,23 +1,27 @@
 locals {
   # Fixed addresses, as on the platform side. The targets have no DNS.
-  netbox_ip = cidrhost(local.subnet_prefixes.netbox, 4)   # 10.50.0.4
-  lab_ip    = cidrhost(local.subnet_prefixes.consumer, 4) # 10.50.0.36
+  netbox_ip    = cidrhost(local.subnet_prefixes.netbox, 4)    # 10.50.0.4
+  lab_ip       = cidrhost(local.subnet_prefixes.consumer, 4)  # 10.50.0.36
+  rehearsal_ip = cidrhost(local.subnet_prefixes.rehearsal, 4) # 10.50.1.4
 
   # NetBox's database and cache come from the Ubuntu archive, and Podman runs
-  # its image (ADR 0035). The lab VM needs nothing beyond the image: the
-  # consumer reads the API with curl and Python.
+  # its image (ADR 0035). The lab VM runs the rehearsal copy, a second NetBox
+  # with its own interface in the rehearsal subnet (platform ADR 0044), so it
+  # gets the same packages.
   vms = {
     netbox = {
-      subnet   = "netbox"
-      address  = local.netbox_ip
-      disk_gb  = 30
-      packages = "podman postgresql-18 valkey-server"
+      subnet    = "netbox"
+      address   = local.netbox_ip
+      disk_gb   = 30
+      packages  = "podman postgresql-18 valkey-server"
+      rehearsal = ""
     }
     lab = {
-      subnet   = "consumer"
-      address  = local.lab_ip
-      disk_gb  = 30
-      packages = ""
+      subnet    = "consumer"
+      address   = local.lab_ip
+      disk_gb   = 30
+      packages  = "podman postgresql-18 valkey-server"
+      rehearsal = local.rehearsal_ip
     }
   }
 
@@ -49,6 +53,24 @@ resource "azurerm_network_interface" "vm" {
   }
 }
 
+# The lab VM's second interface, for the rehearsal copy alone. The first
+# interface stays the primary one, so the lab VM's own traffic and its route to
+# the orchestrator are unchanged.
+#trivy:ignore:AZU-0068
+resource "azurerm_network_interface" "rehearsal" {
+  name                = "nic-${var.name_prefix}-lab-rehearsal"
+  resource_group_name = data.azurerm_resource_group.this.name
+  location            = var.location
+  tags                = local.tags
+
+  ip_configuration {
+    name                          = "primary"
+    subnet_id                     = module.network.subnet_ids["rehearsal"]
+    private_ip_address_allocation = "Static"
+    private_ip_address            = local.rehearsal_ip
+  }
+}
+
 resource "azurerm_linux_virtual_machine" "vm" {
   #checkov:skip=CKV_AZURE_50:The VM agent runs extensions for run-command, which is the way in when the mesh VPN is down
   for_each = local.vms
@@ -61,7 +83,10 @@ resource "azurerm_linux_virtual_machine" "vm" {
   size                = var.vm_size
   tags                = local.tags
 
-  network_interface_ids = [azurerm_network_interface.vm[each.key].id]
+  network_interface_ids = concat(
+    [azurerm_network_interface.vm[each.key].id],
+    each.value.rehearsal == "" ? [] : [azurerm_network_interface.rehearsal.id],
+  )
 
   admin_username                  = var.admin_username
   disable_password_authentication = true
@@ -98,6 +123,9 @@ resource "azurerm_linux_virtual_machine" "vm" {
     orchestrator_ip             = var.orchestrator_ip
     update_public_key           = var.update_public_key
     packages                    = each.value.packages
+    rehearsal_address           = each.value.rehearsal
+    rehearsal_prefix            = local.subnet_prefixes.rehearsal
+    rehearsal_gateway           = cidrhost(local.subnet_prefixes.rehearsal, 1)
     first_boot                  = filebase64("${path.module}/../../host/aisec-first-boot")
     update_command              = filebase64("${path.module}/../../host/aisec-target-update")
   }))
