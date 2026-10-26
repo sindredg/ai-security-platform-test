@@ -13,6 +13,14 @@ one new token for it. NetBox shows a token's value once, in the answer that
 makes it, so the value goes straight to TOKEN_DIR/<account>, root's, mode 600.
 Nobody keeps an account's password, so it has no other way in.
 
+The rehearsal copy on the lab VM is seeded the same way (platform ADR 0044),
+with its own address, certificate, and seeding token from the environment:
+AISEC_NETBOX_URL, AISEC_NETBOX_CERT, and AISEC_SEED_TOKEN. The copy sees the
+lab VM's reads from another address than the live NetBox does, so
+AISEC_CONSUMER_ADDRESS, when set, limits the tokens the seed limits to the
+consumer's address to that one instead. Unset, every value is the live
+NetBox's.
+
 Usage: seed.py SEED TOKEN_DIR
 """
 
@@ -26,9 +34,10 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-URL = "https://10.50.0.4:8443"
-CERT = "/etc/aisec/netbox/tls.crt"
-SEED_TOKEN = "/etc/aisec/netbox/seed-token"  # noqa: S105 - the file's path
+URL = os.environ.get("AISEC_NETBOX_URL", "https://10.50.0.4:8443")
+CERT = os.environ.get("AISEC_NETBOX_CERT", "/etc/aisec/netbox/tls.crt")
+SEED_TOKEN = os.environ.get("AISEC_SEED_TOKEN", "/etc/aisec/netbox/seed-token")
+CONSUMER = "10.50.0.36/32"
 TOKEN_FORM = re.compile(r"nbt_[A-Za-z0-9]{12}\.[A-Za-z0-9]{40}")
 
 
@@ -135,8 +144,29 @@ def seed_objects(netbox, groups):
             print(f"have  {path} {name}")
 
 
+def token_addresses(specs, consumer):
+    """Each token's allowed addresses. With a consumer address given, a token
+    the seed limits to CONSUMER is limited to that address instead."""
+    if consumer is None:
+        return [spec["allowed_ips"] for spec in specs]
+    if not re.fullmatch(r"(\d{1,3}\.){3}\d{1,3}/32", consumer):
+        sys.exit(
+            f"AISEC_CONSUMER_ADDRESS: {consumer!r} is not one IPv4 address with /32"
+        )
+    moved = [
+        [consumer] if spec["allowed_ips"] == [CONSUMER] else spec["allowed_ips"]
+        for spec in specs
+    ]
+    if moved == [spec["allowed_ips"] for spec in specs]:
+        sys.exit(
+            f"AISEC_CONSUMER_ADDRESS: no token in the seed is limited to {CONSUMER}"
+        )
+    return moved
+
+
 def make_tokens(netbox, specs, token_dir):
-    for spec in specs:
+    addresses = token_addresses(specs, os.environ.get("AISEC_CONSUMER_ADDRESS"))
+    for spec, allowed in zip(specs, addresses, strict=True):
         account = spec["user"]
         user = the_one(netbox.find("/api/users/users/", username=account), account)
         for old in netbox.find("/api/users/tokens/", user_id=user["id"]):
@@ -147,7 +177,7 @@ def make_tokens(netbox, specs, token_dir):
             {
                 "user": user["id"],
                 "write_enabled": spec["write_enabled"],
-                "allowed_ips": spec["allowed_ips"],
+                "allowed_ips": allowed,
                 "description": "made by seed.py",
             },
         )

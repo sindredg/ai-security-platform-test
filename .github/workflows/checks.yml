@@ -242,7 +242,7 @@ jobs:
           mkdir -p "${units}" "${broken}"
           id=$(printf '0%.0s' $(seq 1 64))
           for unit in netbox/*.container; do
-            sed "s/@NETBOX_IMAGE_ID@/${id}/" "${unit}" > "${units}/${unit##*/}"
+            sed -e "s/@NETBOX_IMAGE_ID@/${id}/" -e "s|@CONF@|/etc/aisec/netbox|g" "${unit}" > "${units}/${unit##*/}"
           done
           [ "$(find "${units}" -name '*.container' | wc -l)" -ge 2 ]
           QUADLET_UNIT_DIRS="${units}" /usr/libexec/podman/quadlet -dryrun > "${RUNNER_TEMP}/generated"

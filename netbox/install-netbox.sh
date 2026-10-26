@@ -13,6 +13,14 @@
 # certificate is copied out, for the orchestrator to pin. A second run keeps
 # what exists and installs the rest again.
 #
+# The rehearsal copy on the lab VM is installed with the same script (platform
+# ADR 0044), with three values from the environment: AISEC_NETBOX_ADDRESS, the
+# address in the certificate and the allowed hosts; AISEC_NETBOX_LISTEN, the
+# one address Granian listens on, where the live NetBox takes every address;
+# and AISEC_NETBOX_CONF, the directory for the settings and the certificate,
+# since the lab VM's /etc/aisec/netbox holds the consumer's pin of the live
+# NetBox. Unset, each is the live NetBox's.
+#
 # Usage: install-netbox.sh ARCHIVE
 set -euo pipefail
 
@@ -22,11 +30,12 @@ archive=${1:?usage: install-netbox.sh ARCHIVE}
 . "$here/image.env"
 id=${NETBOX_IMAGE_ID#sha256:}
 
-conf=/etc/aisec/netbox
+conf=${AISEC_NETBOX_CONF:-/etc/aisec/netbox}
 media=/var/lib/aisec-netbox/media
 units=/etc/containers/systemd
 name=netbox.aisec.internal
-address=10.50.0.4
+address=${AISEC_NETBOX_ADDRESS:-10.50.0.4}
+listen=${AISEC_NETBOX_LISTEN:-0.0.0.0}
 port=8443
 
 if [ "$(id -u)" != 0 ]; then
@@ -37,6 +46,19 @@ if ! [[ $id =~ ^[0-9a-f]{64}$ ]]; then
   echo "image.env: NETBOX_IMAGE_ID is not a SHA-256 image ID" >&2
   exit 1
 fi
+for value in "$address" "$listen"; do
+  if ! [[ $value =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]]; then
+    echo "not an IPv4 address: $value" >&2
+    exit 1
+  fi
+done
+if ! [[ $conf =~ ^/etc/aisec/[a-z-]+$ ]]; then
+  echo "AISEC_NETBOX_CONF has to be a directory under /etc/aisec: $conf" >&2
+  exit 1
+fi
+# The page check below connects where Granian listens.
+probe=$listen
+[ "$listen" != 0.0.0.0 ] || probe=127.0.0.1
 
 # 1. The image. A load of another image leaves it stored, and nothing here
 # starts it: the units name the pinned ID.
@@ -120,14 +142,16 @@ echo "ok    Valkey password"
 # 6. The settings, the media directory, and the units with the image ID in
 # them. Quadlet's dry run reads every unit before systemd does. The units
 # mount client-address.py and granian.py from $conf (ADR 0039).
-install -m 644 "$here/netbox.env" "$conf/netbox.env"
+sed -e "s/@ADDRESS@/$address/" -e "s/@LISTEN@/$listen/" "$here/netbox.env" > "$conf/netbox.env.new"
+chmod 644 "$conf/netbox.env.new"
+mv "$conf/netbox.env.new" "$conf/netbox.env"
 install -m 644 "$here/client-address.py" "$conf/client-address.py"
 install -m 644 "$here/granian.py" "$conf/granian.py"
 install -d -m 755 "${media%/*}"
 install -d -m 750 -o 999 -g 0 "$media"
 install -d -m 755 "$units"
 for unit in netbox.container netbox-worker.container; do
-  sed "s/@NETBOX_IMAGE_ID@/$id/" "$here/$unit" > "$units/$unit.new"
+  sed -e "s/@NETBOX_IMAGE_ID@/$id/" -e "s|@CONF@|$conf|g" "$here/$unit" > "$units/$unit.new"
   chmod 644 "$units/$unit.new"
   mv "$units/$unit.new" "$units/$unit"
 done
@@ -142,7 +166,7 @@ echo "ok    units started"
 code=000
 for i in $(seq 1 360); do
   code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 --cacert "$conf/tls.crt" \
-    --resolve "$name:$port:127.0.0.1" "https://$name:$port/login/" || true)
+    --resolve "$name:$port:$probe" "https://$name:$port/login/" || true)
   [ "$code" = 200 ] && break
   [ $((i % 12)) = 0 ] && echo "waiting $((i / 12)) min, last: $(journalctl -u netbox -n 1 -o cat --no-pager)"
   sleep 5
