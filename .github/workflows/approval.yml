@@ -1,0 +1,50 @@
+# The "Approved commit" check (platform ADR 0050): a pull request that changes
+# NetBox's seed, the approvers file, or this check merges only with an
+# approval tag on its head commit, signed with the key in APPROVERS.
+#
+# pull_request_target, as in signatures.yml: the workflow, the script, and
+# APPROVERS come from the default branch, and the pull request's commits and
+# the approval tags are fetched as data. Nothing from the pull request is
+# checked out or run. A tag pushed after the check ran does not start it
+# again: run the check again after approving.
+name: approval
+
+on:
+  pull_request_target:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: approval-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  approval:
+    name: Approved commit
+    runs-on: ubuntu-26.04
+    timeout-minutes: 5
+    steps:
+      # The default branch as it is now, for the same reason as in
+      # signatures.yml: a branch could hold its own approvers file.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      # The repository is public, so the fetch needs no credential. Tags
+      # already in the clone are replaced, so a moved tag is read as it is now.
+      - name: Fetch the pull request's commits and the approval tags
+        env:
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          git fetch --no-tags origin "${HEAD_SHA}"
+          git fetch --no-tags --force origin '+refs/tags/approve/netbox/*:refs/tags/approve/netbox/*'
+
+      - name: Check the approval
+        env:
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: >
+          .github/scripts/check-approval.sh
+          "${PWD}/APPROVERS" HEAD "${HEAD_SHA}"
