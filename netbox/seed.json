@@ -97,7 +97,7 @@
           "object_types": ["dcim.device", "ipam.ipaddress"],
           "actions": ["view"],
           "constraints": null,
-          "users": ["inventory-reader"]
+          "users": []
         },
         {
           "name": "inventory-reader-control: tenant-a inventory",
