@@ -38,6 +38,21 @@ locals {
         description                = "NetBox's API, for the authorized consumer."
       },
     ]
+    # The rehearsal copy on the lab VM's second interface (platform ADR 0044).
+    # Only the orchestrator, which seeds, collects, rehearses, and delivers.
+    rehearsal = [
+      {
+        name                       = "allow-netbox-from-orchestrator"
+        priority                   = 1100
+        direction                  = "Inbound"
+        access                     = "Allow"
+        protocol                   = "Tcp"
+        source_address_prefix      = "${var.orchestrator_ip}/32"
+        destination_address_prefix = "${local.rehearsal_ip}/32"
+        destination_port_range     = "8443"
+        description                = "The rehearsal copy's API, for the orchestrator alone."
+      },
+    ]
     consumer = [
       {
         name                       = "allow-netbox-to-netbox"

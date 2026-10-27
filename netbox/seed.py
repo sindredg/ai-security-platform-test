@@ -13,9 +13,23 @@ one new token for it. NetBox shows a token's value once, in the answer that
 makes it, so the value goes straight to TOKEN_DIR/<account>, root's, mode 600.
 Nobody keeps an account's password, so it has no other way in.
 
+The rehearsal copy on the lab VM is seeded the same way (platform ADR 0044),
+with its own address, certificate, and seeding token from the environment:
+AISEC_NETBOX_URL, AISEC_NETBOX_CERT, and AISEC_SEED_TOKEN. The copy sees the
+lab VM's reads from another address than the live NetBox does, so
+AISEC_CONSUMER_ADDRESS, when set, limits the tokens the seed limits to the
+consumer's address to that one instead. Unset, every value is the live
+NetBox's.
+
+A token marked copy_only is made on the copy alone, which AISEC_NETBOX_COPY=yes
+names. On the live NetBox the run deletes that account's tokens and makes
+none: the delivery account gets a token for each delivery from
+make-netbox-token.sh deliver (platform ADR 0047).
+
 Usage: seed.py SEED TOKEN_DIR
 """
 
+import ipaddress
 import json
 import os
 import re
@@ -26,9 +40,10 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-URL = "https://10.50.0.4:8443"
-CERT = "/etc/aisec/netbox/tls.crt"
-SEED_TOKEN = "/etc/aisec/netbox/seed-token"  # noqa: S105 - the file's path
+URL = os.environ.get("AISEC_NETBOX_URL", "https://10.50.0.4:8443")
+CERT = os.environ.get("AISEC_NETBOX_CERT", "/etc/aisec/netbox/tls.crt")
+SEED_TOKEN = os.environ.get("AISEC_SEED_TOKEN", "/etc/aisec/netbox/seed-token")
+CONSUMER = "10.50.0.36/32"
 TOKEN_FORM = re.compile(r"nbt_[A-Za-z0-9]{12}\.[A-Za-z0-9]{40}")
 
 
@@ -135,19 +150,64 @@ def seed_objects(netbox, groups):
             print(f"have  {path} {name}")
 
 
+def one_address(value):
+    """Whether value is one IPv4 address with /32, written as NetBox writes it."""
+    try:
+        network = ipaddress.IPv4Network(value)
+    except ValueError:
+        return False
+    return value.isascii() and network.prefixlen == 32 and str(network) == value
+
+
+def on_the_copy():
+    """Whether this run seeds the rehearsal copy: AISEC_NETBOX_COPY=yes."""
+    value = os.environ.get("AISEC_NETBOX_COPY")
+    if value not in (None, "yes"):
+        sys.exit(f"AISEC_NETBOX_COPY: {value!r}, not yes")
+    return value == "yes"
+
+
+def token_addresses(specs, consumer):
+    """Each token's allowed addresses. With a consumer address given, a token
+    the seed limits to CONSUMER is limited to that address instead."""
+    if consumer is None:
+        return [spec["allowed_ips"] for spec in specs]
+    if not one_address(consumer):
+        sys.exit(
+            f"AISEC_CONSUMER_ADDRESS: {consumer!r} is not one IPv4 address with /32"
+        )
+    moved = [
+        [consumer] if spec["allowed_ips"] == [CONSUMER] else spec["allowed_ips"]
+        for spec in specs
+    ]
+    if moved == [spec["allowed_ips"] for spec in specs]:
+        sys.exit(
+            f"AISEC_CONSUMER_ADDRESS: no token in the seed is limited to {CONSUMER}"
+        )
+    return moved
+
+
 def make_tokens(netbox, specs, token_dir):
-    for spec in specs:
+    addresses = token_addresses(specs, os.environ.get("AISEC_CONSUMER_ADDRESS"))
+    copy = on_the_copy()
+    for spec, allowed in zip(specs, addresses, strict=True):
         account = spec["user"]
         user = the_one(netbox.find("/api/users/users/", username=account), account)
-        for old in netbox.find("/api/users/tokens/", user_id=user["id"]):
+        old_tokens = netbox.find("/api/users/tokens/", user_id=user["id"])
+        for old in old_tokens:
             netbox.call("DELETE", f"/api/users/tokens/{old['id']}/")
+        if spec.get("copy_only") and not copy:
+            print(
+                f"made  no token for {account}, {len(old_tokens)} deleted: the copy only"
+            )
+            continue
         made = netbox.call(
             "POST",
             "/api/users/tokens/",
             {
                 "user": user["id"],
                 "write_enabled": spec["write_enabled"],
-                "allowed_ips": spec["allowed_ips"],
+                "allowed_ips": allowed,
                 "description": "made by seed.py",
             },
         )
@@ -167,6 +227,9 @@ def main():
         sys.exit("usage: seed.py SEED TOKEN_DIR")
     if os.geteuid() != 0:
         sys.exit("seed.py: run as root")
+    if not URL.startswith("https://"):
+        sys.exit(f"AISEC_NETBOX_URL: {URL!r} is not an https URL")
+    on_the_copy()
     with open(sys.argv[1]) as file:
         seed = json.load(file)
     with open(SEED_TOKEN) as file:

@@ -73,7 +73,8 @@
       "items": [
         {"username": "inventory-reader"},
         {"username": "inventory-reader-control"},
-        {"username": "aisec-collector"}
+        {"username": "aisec-collector"},
+        {"username": "aisec-deliver"}
       ]
     },
     {
@@ -115,6 +116,24 @@
           "actions": ["view"],
           "constraints": null,
           "users": ["aisec-collector"]
+        },
+        {
+          "name": "aisec-deliver: assignments read",
+          "description": "Read the accounts and groups a permission is assigned to",
+          "enabled": true,
+          "object_types": ["users.user", "users.group"],
+          "actions": ["view"],
+          "constraints": null,
+          "users": ["aisec-deliver"]
+        },
+        {
+          "name": "aisec-deliver: assignments",
+          "description": "Change which accounts a permission is assigned to",
+          "enabled": true,
+          "object_types": ["users.objectpermission"],
+          "actions": ["view", "change"],
+          "constraints": null,
+          "users": ["aisec-deliver"]
         }
       ]
     }
@@ -122,6 +141,7 @@
   "tokens": [
     {"user": "inventory-reader", "write_enabled": false, "allowed_ips": ["10.50.0.36/32"]},
     {"user": "inventory-reader-control", "write_enabled": false, "allowed_ips": ["10.50.0.36/32"]},
-    {"user": "aisec-collector", "write_enabled": false, "allowed_ips": ["10.40.0.4/32"]}
+    {"user": "aisec-collector", "write_enabled": false, "allowed_ips": ["10.40.0.4/32"]},
+    {"user": "aisec-deliver", "write_enabled": true, "allowed_ips": ["10.40.0.4/32"], "copy_only": true}
   ]
 }
