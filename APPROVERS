@@ -1,0 +1,4 @@
+# The key whose signed tag approves a delivery to NetBox (platform ADR 0046).
+# The public half of the operator's approval key, and nothing else. It is not
+# the commit signing key in .github/allowed_signers. The orchestrator pins a copy.
+aisec-approver namespaces="git" ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFm5I6pY/qEz1fO9mjdPl0viHeZPqjckc1b7z1kRb3BG aisec-approval
