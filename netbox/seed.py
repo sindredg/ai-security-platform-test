@@ -29,6 +29,7 @@ make-netbox-token.sh deliver (platform ADR 0047).
 Usage: seed.py SEED TOKEN_DIR
 """
 
+import ipaddress
 import json
 import os
 import re
@@ -149,6 +150,15 @@ def seed_objects(netbox, groups):
             print(f"have  {path} {name}")
 
 
+def one_address(value):
+    """Whether value is one IPv4 address with /32, written as NetBox writes it."""
+    try:
+        network = ipaddress.IPv4Network(value)
+    except ValueError:
+        return False
+    return value.isascii() and network.prefixlen == 32 and str(network) == value
+
+
 def on_the_copy():
     """Whether this run seeds the rehearsal copy: AISEC_NETBOX_COPY=yes."""
     value = os.environ.get("AISEC_NETBOX_COPY")
@@ -162,7 +172,7 @@ def token_addresses(specs, consumer):
     the seed limits to CONSUMER is limited to that address instead."""
     if consumer is None:
         return [spec["allowed_ips"] for spec in specs]
-    if not re.fullmatch(r"(\d{1,3}\.){3}\d{1,3}/32", consumer):
+    if not one_address(consumer):
         sys.exit(
             f"AISEC_CONSUMER_ADDRESS: {consumer!r} is not one IPv4 address with /32"
         )
@@ -217,6 +227,8 @@ def main():
         sys.exit("usage: seed.py SEED TOKEN_DIR")
     if os.geteuid() != 0:
         sys.exit("seed.py: run as root")
+    if not URL.startswith("https://"):
+        sys.exit(f"AISEC_NETBOX_URL: {URL!r} is not an https URL")
     on_the_copy()
     with open(sys.argv[1]) as file:
         seed = json.load(file)

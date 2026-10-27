@@ -52,6 +52,12 @@ for value in "$address" "$listen"; do
     exit 1
   fi
 done
+# Without its three values, on the lab VM, this would write the live NetBox's
+# settings over the consumer's pin in /etc/aisec/netbox.
+if ! ip -4 -o addr show | awk '{print $4}' | cut -d / -f 1 | grep -qxF "$address"; then
+  echo "this VM has no address $address: set AISEC_NETBOX_ADDRESS" >&2
+  exit 1
+fi
 if ! [[ $conf =~ ^/etc/aisec/[a-z-]+$ ]]; then
   echo "AISEC_NETBOX_CONF has to be a directory under /etc/aisec: $conf" >&2
   exit 1
