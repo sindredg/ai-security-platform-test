@@ -15,7 +15,7 @@
       "items": [
         {"name": "Site A", "slug": "site-a", "status": "active", "tenant": {"slug": "tenant-a"}},
         {"name": "Site B", "slug": "site-b", "status": "active", "tenant": {"slug": "tenant-b"}},
-        {"name": "Site C", "slug": "site-c", "status": "active", "tenant": {"slug": "tenant-c"}}
+        {"name": "Site C", "slug": "site-c", "status": "planned", "tenant": {"slug": "tenant-c"}}
       ]
     },
     {
