@@ -21,6 +21,11 @@ AISEC_CONSUMER_ADDRESS, when set, limits the tokens the seed limits to the
 consumer's address to that one instead. Unset, every value is the live
 NetBox's.
 
+A token marked copy_only is made on the copy alone, which AISEC_NETBOX_COPY=yes
+names. On the live NetBox the run deletes that account's tokens and makes
+none: the delivery account gets a token for each delivery from
+make-netbox-token.sh deliver (platform ADR 0047).
+
 Usage: seed.py SEED TOKEN_DIR
 """
 
@@ -144,6 +149,14 @@ def seed_objects(netbox, groups):
             print(f"have  {path} {name}")
 
 
+def on_the_copy():
+    """Whether this run seeds the rehearsal copy: AISEC_NETBOX_COPY=yes."""
+    value = os.environ.get("AISEC_NETBOX_COPY")
+    if value not in (None, "yes"):
+        sys.exit(f"AISEC_NETBOX_COPY: {value!r}, not yes")
+    return value == "yes"
+
+
 def token_addresses(specs, consumer):
     """Each token's allowed addresses. With a consumer address given, a token
     the seed limits to CONSUMER is limited to that address instead."""
@@ -166,11 +179,18 @@ def token_addresses(specs, consumer):
 
 def make_tokens(netbox, specs, token_dir):
     addresses = token_addresses(specs, os.environ.get("AISEC_CONSUMER_ADDRESS"))
+    copy = on_the_copy()
     for spec, allowed in zip(specs, addresses, strict=True):
         account = spec["user"]
         user = the_one(netbox.find("/api/users/users/", username=account), account)
-        for old in netbox.find("/api/users/tokens/", user_id=user["id"]):
+        old_tokens = netbox.find("/api/users/tokens/", user_id=user["id"])
+        for old in old_tokens:
             netbox.call("DELETE", f"/api/users/tokens/{old['id']}/")
+        if spec.get("copy_only") and not copy:
+            print(
+                f"made  no token for {account}, {len(old_tokens)} deleted: the copy only"
+            )
+            continue
         made = netbox.call(
             "POST",
             "/api/users/tokens/",
@@ -197,6 +217,7 @@ def main():
         sys.exit("usage: seed.py SEED TOKEN_DIR")
     if os.geteuid() != 0:
         sys.exit("seed.py: run as root")
+    on_the_copy()
     with open(sys.argv[1]) as file:
         seed = json.load(file)
     with open(SEED_TOKEN) as file:

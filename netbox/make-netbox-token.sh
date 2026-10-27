@@ -1,7 +1,7 @@
 #!/bin/bash
-# Makes an API token for one of the two NetBox accounts that cannot get one
-# through the API (platform ADR 0037 and 0039). Runs as root on the NetBox VM,
-# through Django's shell in the running container.
+# Makes an API token for one of the three NetBox accounts that get no standing
+# token from the seed (platform ADR 0037, 0039, and 0047). Runs as root on the
+# NetBox VM, through Django's shell in the running container.
 #
 #   seed   aisec-seed, a superuser, which makes every other account and token
 #          through the API. Its token may write, is limited to the
@@ -9,21 +9,26 @@
 #   probe  aisec-address-probe, with no permission. Its token is read-only and
 #          limited to 192.0.2.1, a documentation address that no host has. A
 #          request that NetBox accepts with it took its address from a header.
+#   deliver aisec-deliver, which the seed makes. Its token may write, is
+#          limited to the orchestrator's address, and expires after an hour:
+#          one for each delivery, piped into deliver-netbox-change.
 #
-# Neither account has a password. Each run deletes the account's tokens and
+# The seed and probe accounts have no password, and the seed gives
+# aisec-deliver one that nobody keeps. Each run deletes the account's tokens and
 # makes one. The token goes to standard output and nowhere else, as the value
 # that follows "Bearer " in a request's Authorization header. The caller pipes
 # it to the orchestrator. The probe's token has to exist before the address
 # setting does, so that the setting can be seen to fail.
 #
-# Usage: make-netbox-token.sh seed|probe
+# Usage: make-netbox-token.sh seed|probe|deliver
 set -euo pipefail
 
 case ${1:-} in
-  seed) account=aisec-seed superuser=True write=True allowed=10.40.0.4/32 hours=1 ;;
-  probe) account=aisec-address-probe superuser=False write=False allowed=192.0.2.1/32 hours=0 ;;
+  seed) account=aisec-seed superuser=True write=True allowed=10.40.0.4/32 hours=1 seeded=False ;;
+  probe) account=aisec-address-probe superuser=False write=False allowed=192.0.2.1/32 hours=0 seeded=False ;;
+  deliver) account=aisec-deliver superuser=False write=True allowed=10.40.0.4/32 hours=1 seeded=True ;;
   *)
-    echo "usage: make-netbox-token.sh seed|probe" >&2
+    echo "usage: make-netbox-token.sh seed|probe|deliver" >&2
     exit 1
     ;;
 esac
@@ -43,11 +48,17 @@ from netaddr import IPNetwork
 from users.models import Token, User
 
 user = User.objects.filter(username='$account').first()
-if user is None:
-    make = User.objects.create_superuser if $superuser else User.objects.create_user
-    user = make('$account')
-if user.is_superuser != $superuser or user.has_usable_password():
-    raise SystemExit('$account exists with other settings')
+if $seeded:
+    if user is None:
+        raise SystemExit('$account does not exist: seed NetBox first')
+    if user.is_superuser:
+        raise SystemExit('$account exists with other settings')
+else:
+    if user is None:
+        make = User.objects.create_superuser if $superuser else User.objects.create_user
+        user = make('$account')
+    if user.is_superuser != $superuser or user.has_usable_password():
+        raise SystemExit('$account exists with other settings')
 Token.objects.filter(user=user).delete()
 token = Token(
     user=user,

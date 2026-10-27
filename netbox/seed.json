@@ -142,6 +142,6 @@
     {"user": "inventory-reader", "write_enabled": false, "allowed_ips": ["10.50.0.36/32"]},
     {"user": "inventory-reader-control", "write_enabled": false, "allowed_ips": ["10.50.0.36/32"]},
     {"user": "aisec-collector", "write_enabled": false, "allowed_ips": ["10.40.0.4/32"]},
-    {"user": "aisec-deliver", "write_enabled": true, "allowed_ips": ["10.40.0.4/32"]}
+    {"user": "aisec-deliver", "write_enabled": true, "allowed_ips": ["10.40.0.4/32"], "copy_only": true}
   ]
 }
