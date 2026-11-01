@@ -135,8 +135,8 @@ jobs:
   # packages. The SBOM and the report are kept with the run. The report
   # script fails the job on another image, on a scan that did not see
   # NetBox's packages, on a report with no vulnerability data, on an SBOM
-  # that names another image, and on a critical or high vulnerability with a
-  # fixed version. Its tests run first, on stub reports. The vulnerability
+  # that is not CycloneDX, names another image, or lists none of NetBox's
+  # packages, and on a critical or high vulnerability with a fixed version. Its tests run first, on stub reports. The vulnerability
   # database is downloaded on each run, so the same pin can fail later.
   netbox-image:
     name: NetBox image scan
@@ -235,8 +235,9 @@ jobs:
           docker run --rm --volume "${PWD}:/mnt:ro" --workdir /mnt "${SHELLCHECK_IMAGE}" \
             "${scripts[@]}"
 
-  # NetBox's seed script runs as root on the orchestrator, and the other two
-  # Python files are NetBox's settings. ruff.toml sets the rules.
+  # NetBox's seed script runs as root on the orchestrator, two Python files
+  # are NetBox's settings, and the image scan's report script and its tests
+  # read a scanner's output. ruff.toml sets the rules.
   ruff:
     name: Ruff
     runs-on: ubuntu-26.04

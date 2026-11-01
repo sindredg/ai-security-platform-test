@@ -13,8 +13,8 @@ scanned so far had findings, so such a report fails too (platform issue 250).
 A clean image would fail the same way, and gets a reading before the check
 is changed for it.
 
-With SBOM, the CycloneDX file of the same scan has to name the pinned image
-and list NetBox's own packages, as the report does.
+With SBOM, the CycloneDX file of a scan of the same digest has to name the
+pinned image and list NetBox's own packages, as the report does.
 """
 
 import json
@@ -57,7 +57,7 @@ def problems_and_rows(report, image_id):
     missing = sorted(NETBOX_PACKAGES - names)
     if missing:
         problems.append("the scan lists none of " + ", ".join(missing))
-    if not any("Vulnerabilities" in result for result in report.get("Results") or []):
+    if not any(result.get("Vulnerabilities") for result in report.get("Results") or []):
         problems.append("no result carries vulnerability data")
     failing = [row for row in rows if row[4] != "none"]
     if failing:

@@ -7,10 +7,12 @@ import contextlib
 import importlib.util
 import io
 import json
+import os
 import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 SCRIPT = Path(__file__).resolve().parents[1] / "netbox-image-report.py"
 spec = importlib.util.spec_from_file_location("netbox_image_report", SCRIPT)
@@ -101,6 +103,13 @@ class Problems(unittest.TestCase):
             self.problems(report()), ["no result carries vulnerability data"]
         )
 
+    def test_an_empty_or_null_vulnerability_list_is_no_data(self):
+        for empty in ([], None):
+            self.assertEqual(
+                self.problems(report(vulnerabilities=empty)),
+                ["no result carries vulnerability data"],
+            )
+
 
 class Sbom(unittest.TestCase):
     def test_the_pinned_image_with_netbox_packages_passes(self):
@@ -135,50 +144,60 @@ class Sbom(unittest.TestCase):
 
 class Main(unittest.TestCase):
     def run_main(self, *documents):
+        """The exit code, standard output, and the job summary main() wrote.
+        The pipeline sets GITHUB_STEP_SUMMARY for the test step too, so it
+        points at a file of the test's own, never the job's."""
         with tempfile.TemporaryDirectory() as tmp:
             paths = []
             for i, document in enumerate(documents):
                 path = Path(tmp) / f"{i}.json"
                 path.write_text(json.dumps(document))
                 paths.append(str(path))
+            summary = Path(tmp) / "summary.md"
             argv = ["netbox-image-report.py", paths[0], PIN, *paths[1:]]
             out = io.StringIO()
-            old = sys.argv
-            sys.argv = argv
-            try:
-                with contextlib.redirect_stdout(out):
-                    code = report_script.main()
-            finally:
-                sys.argv = old
-        return code, out.getvalue()
+            with (
+                mock.patch.object(sys, "argv", argv),
+                mock.patch.dict(os.environ, {"GITHUB_STEP_SUMMARY": str(summary)}),
+                contextlib.redirect_stdout(out),
+            ):
+                code = report_script.main()
+            written = summary.read_text() if summary.exists() else ""
+        return code, out.getvalue(), written
 
     def test_a_good_report_and_sbom_exit_0(self):
-        code, out = self.run_main(
+        code, out, _ = self.run_main(
             report(vulnerabilities=[vulnerability("LOW")]), sbom()
         )
         self.assertEqual(code, 0)
         self.assertNotIn("::error::", out)
 
     def test_a_bad_sbom_exits_1(self):
-        code, out = self.run_main(
+        code, out, _ = self.run_main(
             report(vulnerabilities=[vulnerability("LOW")]), sbom(image=OTHER)
         )
         self.assertEqual(code, 1)
         self.assertIn("::error::the SBOM names the image", out)
 
     def test_no_vulnerability_data_exits_1(self):
-        code, out = self.run_main(report())
+        code, out, _ = self.run_main(report())
         self.assertEqual(code, 1)
         self.assertIn("::error::no result carries vulnerability data", out)
 
-    def test_a_call_without_both_files_exits_2(self):
-        old = sys.argv
-        sys.argv = ["netbox-image-report.py", "report.json"]
-        try:
-            with contextlib.redirect_stderr(io.StringIO()):
+    def test_the_table_goes_to_the_job_summary(self):
+        code, _, written = self.run_main(report(vulnerabilities=[vulnerability("LOW")]))
+        self.assertEqual(code, 0)
+        self.assertTrue(written.startswith("## NetBox image scan\n\n"))
+        self.assertIn(f"Image {PIN}, 4 packages", written)
+        self.assertIn("| LOW | 0 | 1 |", written)
+
+    def test_a_call_without_the_image_id_or_with_too_many_arguments_exits_2(self):
+        for argv in (["r.json"], ["r.json", PIN, "s.json", "extra"]):
+            with (
+                mock.patch.object(sys, "argv", ["netbox-image-report.py", *argv]),
+                contextlib.redirect_stderr(io.StringIO()),
+            ):
                 self.assertEqual(report_script.main(), 2)
-        finally:
-            sys.argv = old
 
 
 if __name__ == "__main__":
