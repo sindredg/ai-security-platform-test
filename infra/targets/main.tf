@@ -10,11 +10,19 @@ locals {
     rehearsal  = cidrsubnet(var.address_space, 7, 8) # 10.50.1.0/27
   }
 
-  # NetBox's port (platform ADR 0035), on the subnets that use it. The
-  # orchestrator seeds and collects, and the consumer reads from its own
-  # subnet. Nothing else reaches the port.
+  # NetBox's port (platform ADR 0035). The orchestrator seeds and collects,
+  # so its rules stay here, next to the variable that holds its address. The
+  # rules that decide which target subnet reaches the port are data in
+  # netbox-rules.json, so a proposed change edits that file and no Terraform
+  # (platform ADR 0056). Its addresses are literal so that the file reads on
+  # its own. A merge that changes it needs an approval, like the seed (platform
+  # ADR 0050). Every subnet denies outbound by default, so a path from one
+  # subnet to the port needs an outbound rule there and an inbound rule on
+  # NetBox's subnet.
+  netbox_rules = jsondecode(file("${path.module}/netbox-rules.json"))
+
   service_rules = {
-    netbox = [
+    netbox = concat([
       {
         name                       = "allow-netbox-from-orchestrator"
         priority                   = 1100
@@ -26,21 +34,10 @@ locals {
         destination_port_range     = "8443"
         description                = "NetBox's API, for the seed and the collectors."
       },
-      {
-        name                       = "allow-netbox-from-consumer"
-        priority                   = 1110
-        direction                  = "Inbound"
-        access                     = "Allow"
-        protocol                   = "Tcp"
-        source_address_prefix      = local.subnet_prefixes.consumer
-        destination_address_prefix = "${local.netbox_ip}/32"
-        destination_port_range     = "8443"
-        description                = "NetBox's API, for the authorized consumer."
-      },
-    ]
+    ], local.netbox_rules.netbox)
     # The rehearsal copy on the lab VM's second interface (platform ADR 0044).
     # Only the orchestrator, which seeds, collects, rehearses, and delivers.
-    rehearsal = [
+    rehearsal = concat([
       {
         name                       = "allow-netbox-from-orchestrator"
         priority                   = 1100
@@ -52,20 +49,8 @@ locals {
         destination_port_range     = "8443"
         description                = "The rehearsal copy's API, for the orchestrator alone."
       },
-    ]
-    consumer = [
-      {
-        name                       = "allow-netbox-to-netbox"
-        priority                   = 1100
-        direction                  = "Outbound"
-        access                     = "Allow"
-        protocol                   = "Tcp"
-        source_address_prefix      = local.subnet_prefixes.consumer
-        destination_address_prefix = "${local.netbox_ip}/32"
-        destination_port_range     = "8443"
-        description                = "The authorized consumer, to NetBox's API."
-      },
-    ]
+    ], local.netbox_rules.rehearsal)
+    consumer = local.netbox_rules.consumer
   }
 }
 
