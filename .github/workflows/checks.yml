@@ -134,9 +134,10 @@ jobs:
   # the platform NetBox runs on, and reads its operating system and Python
   # packages. The SBOM and the report are kept with the run. The report
   # script fails the job on another image, on a scan that did not see
-  # NetBox's packages, and on a critical or high vulnerability with a fixed
-  # version. The vulnerability database is downloaded on each run, so the
-  # same pin can fail later.
+  # NetBox's packages, on a report with no vulnerability data, on an SBOM
+  # that names another image, and on a critical or high vulnerability with a
+  # fixed version. Its tests run first, on stub reports. The vulnerability
+  # database is downloaded on each run, so the same pin can fail later.
   netbox-image:
     name: NetBox image scan
     runs-on: ubuntu-26.04
@@ -145,6 +146,9 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+
+      - name: Test the report script
+        run: python3 -I -B -m unittest discover -s .github/scripts/tests -v
 
       - name: SBOM and vulnerabilities of the pinned image
         run: |
@@ -158,7 +162,8 @@ jobs:
           }
           scan --format cyclonedx --output /out/netbox-sbom.cdx.json
           scan --scanners vuln --list-all-pkgs --format json --output /out/netbox-vulnerabilities.json
-          python3 -I .github/scripts/netbox-image-report.py "${out}/netbox-vulnerabilities.json" "${NETBOX_IMAGE_ID}"
+          python3 -I .github/scripts/netbox-image-report.py "${out}/netbox-vulnerabilities.json" "${NETBOX_IMAGE_ID}" \
+            "${out}/netbox-sbom.cdx.json"
 
       - name: Keep the SBOM and the report
         if: always()
