@@ -24,5 +24,14 @@
     {"method": "GET", "path": "/api/tenancy/tenants/", "status": 403},
     {"method": "GET", "path": "/api/users/permissions/", "status": 403},
     {"method": "POST", "path": "/api/dcim/devices/", "status": 403}
-  ]
+  ],
+  "network": {
+    "address": "10.50.0.4",
+    "port": 8443,
+    "subnet": "netbox",
+    "viewpoints": {
+      "consumer": {"address": "10.50.0.36", "subnet": "consumer", "reach": "open"},
+      "staging": {"address": "10.50.1.4", "subnet": "rehearsal", "reach": "closed"}
+    }
+  }
 }
