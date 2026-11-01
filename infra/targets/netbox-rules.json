@@ -9,7 +9,7 @@
       "source_address_prefix": "10.50.0.32/27",
       "destination_address_prefix": "10.50.0.4/32",
       "destination_port_range": "8443",
-      "description": "NetBox's API, for the authorized consumer."
+      "description": "NetBox's API, for the authorized consumer only."
     },
     {
       "name": "allow-netbox-from-rehearsal",
