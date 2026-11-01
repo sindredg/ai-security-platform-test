@@ -1,6 +1,7 @@
 # The "Approved commit" check (platform ADR 0050): a pull request that changes
-# NetBox's seed, the approvers file, or this check merges only with an
-# approval tag on its head commit, signed with the key in APPROVERS.
+# NetBox's seed, NetBox's port rules, the approvers file, or this check merges
+# only with an approval tag on its head commit, signed with the key in
+# APPROVERS.
 #
 # pull_request_target, as in signatures.yml: the workflow, the script, and
 # APPROVERS come from the default branch, and the pull request's commits and

@@ -2,9 +2,10 @@
 # Fails unless a pull request that changes what an approval guards has an
 # approval on its head commit: a tag approve/netbox/NAME on that commit,
 # signed with a key in the approvers file, whose message starts with
-# "target: netbox". What an approval guards is NetBox's seed, the approvers
-# file, and this check. A pull request that changes none of them passes.
-# Platform ADR 0050.
+# "target: netbox". What an approval guards is NetBox's seed, the rules that
+# decide which target subnet reaches NetBox's port, the approvers file, and
+# this check. A pull request that changes none of them passes. Platform ADR
+# 0050 and ADR 0056.
 #
 # Usage: check-approval.sh APPROVERS BASE HEAD
 #
@@ -21,8 +22,8 @@ fi
 approvers=$1
 base=$2
 head=$3
-guarded=(netbox/seed.json APPROVERS .github/workflows/approval.yml
-  .github/scripts/check-approval.sh)
+guarded=(netbox/seed.json infra/targets/netbox-rules.json APPROVERS
+  .github/workflows/approval.yml .github/scripts/check-approval.sh)
 
 # An empty or unreadable file would make every signature "unknown key".
 grep -Eq '^[^#[:space:]]+ +namespaces="git" +ssh-' "${approvers}"
