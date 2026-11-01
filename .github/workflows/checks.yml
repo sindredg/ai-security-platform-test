@@ -1,8 +1,9 @@
 # Static checks. This workflow holds no cloud credentials and runs no plans.
 # Applies happen on the operator workstation from a saved plan.
 #
-# The same pins as the platform repository's checks workflow. The only action
-# used is pinned by commit. The scanners and linters run as container images
+# The same pins as the platform repository's checks workflow. The two actions
+# used, GitHub's checkout and upload-artifact, are pinned by commit. The
+# scanners and linters run as container images
 # pinned by digest, or, for Terraform and gitleaks, from release archives
 # checked against a pinned SHA-256. No third-party action runs here.
 name: checks
@@ -128,6 +129,47 @@ jobs:
           docker run --rm --volume "${RUNNER_TEMP}/infra:/src/infra:ro" "${TRIVY_IMAGE}"
           config --skip-check-update --misconfig-scanners terraform --exit-code 1 /src/infra
 
+  # The NetBox image the targets run, scanned by the digest image.env pins
+  # (platform issue 247). Trivy pulls it from the registry for linux/amd64,
+  # the platform NetBox runs on, and reads its operating system and Python
+  # packages. The SBOM and the report are kept with the run. The report
+  # script fails the job on another image, on a scan that did not see
+  # NetBox's packages, and on a critical or high vulnerability with a fixed
+  # version. The vulnerability database is downloaded on each run, so the
+  # same pin can fail later.
+  netbox-image:
+    name: NetBox image scan
+    runs-on: ubuntu-26.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: SBOM and vulnerabilities of the pinned image
+        run: |
+          . netbox/image.env
+          ref="${NETBOX_IMAGE%:*}@${NETBOX_INDEX_DIGEST}"
+          out="${RUNNER_TEMP}/netbox-image"
+          mkdir -p "${out}"
+          scan() {
+            docker run --rm --volume "${out}:/out" "${TRIVY_IMAGE}" image --cache-dir /out/cache \
+              --image-src remote --platform linux/amd64 "$@" "${ref}"
+          }
+          scan --format cyclonedx --output /out/netbox-sbom.cdx.json
+          scan --scanners vuln --list-all-pkgs --format json --output /out/netbox-vulnerabilities.json
+          python3 -I .github/scripts/netbox-image-report.py "${out}/netbox-vulnerabilities.json" "${NETBOX_IMAGE_ID}"
+
+      - name: Keep the SBOM and the report
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: netbox-image
+          path: |
+            ${{ runner.temp }}/netbox-image/netbox-sbom.cdx.json
+            ${{ runner.temp }}/netbox-image/netbox-vulnerabilities.json
+          if-no-files-found: error
+
   gitleaks:
     name: Secret scan
     runs-on: ubuntu-26.04
@@ -202,12 +244,12 @@ jobs:
       - name: Lint the Python files
         run: >
           docker run --rm --volume "${PWD}:/io:ro" --workdir /io "${RUFF_IMAGE}"
-          check --no-cache netbox
+          check --no-cache netbox .github/scripts
 
       - name: Check the formatting
         run: >
           docker run --rm --volume "${PWD}:/io:ro" --workdir /io "${RUFF_IMAGE}"
-          format --no-cache --check netbox
+          format --no-cache --check netbox .github/scripts
 
       # The seed and the contract are read by Python's json module, on the
       # orchestrator and the lab VM. A file it cannot parse fails here first.
